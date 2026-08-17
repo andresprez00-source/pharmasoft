@@ -1,0 +1,20 @@
+EVIDENCIA GA7-220501096-AA2-EV01
+
+Contenido:
+- Proyecto Java Maven.
+- Módulo CRUD de productos.
+- Conexión JDBC con MySQL.
+- Script de creación de base de datos.
+- README con instrucciones.
+- Archivo de versionamiento.
+- Archivo para colocar el enlace del repositorio.
+
+ANTES DE ENTREGAR:
+1. Instalar Java 17, Maven y MySQL.
+2. Ejecutar database/pharmasoft.sql.
+3. Revisar usuario y contraseña de MySQL en ConexionBD.java.
+4. Probar registrar, consultar, actualizar y eliminar.
+5. Crear el repositorio de GitHub y subir el proyecto.
+6. Pegar el enlace real en enlace_repositorio.txt.
+7. Comprimir la carpeta con el nombre:
+   EIDERANDRESMENDOZAPEREZ_AA2_EV01.zip

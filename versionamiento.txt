@@ -1,0 +1,14 @@
+VERSIONAMIENTO DEL PROYECTO
+
+El proyecto está preparado para trabajar con Git.
+
+Comandos recomendados:
+
+git init
+git add .
+git commit -m "Primera version PharmaSoft GA7-AA2-EV01"
+git branch -M main
+git remote add origin URL_DEL_REPOSITORIO
+git push -u origin main
+
+Después de crear el repositorio en GitHub, actualizar enlace_repositorio.txt con la URL real.

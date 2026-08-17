@@ -1,0 +1,21 @@
+RELACION CON ARTEFACTOS PREVIOS
+
+El módulo implementado corresponde al componente de gestión de productos de PharmaSoft.
+
+Requisitos relacionados:
+- Registrar productos.
+- Consultar productos.
+- Actualizar productos.
+- Eliminar productos.
+- Mantener información de inventario.
+
+Clases principales:
+- Producto: representa los datos del producto.
+- ProductoDAO: contiene las operaciones CRUD y JDBC.
+- ConexionBD: administra la conexión con MySQL.
+- PharmasoftApp: interfaz de usuario.
+
+Arquitectura aplicada:
+Presentación -> DAO/Lógica de acceso -> Base de datos MySQL.
+
+Esto permite relacionar la codificación con los artefactos de análisis y diseño realizados anteriormente.

@@ -1,0 +1,10 @@
+REPOSITORIO GITHUB - PHARMASOFT
+
+Evidencia: GA7-220501096-AA2-EV01
+
+El proyecto debe ser publicado en GitHub y en este archivo se debe pegar el enlace final del repositorio.
+
+Enlace:
+https://github.com/PEGAR-AQUI-EL-USUARIO/pharmasoft
+
+Nota: reemplazar esta dirección por el enlace real después de crear el repositorio en GitHub.
