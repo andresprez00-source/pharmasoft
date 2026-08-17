@@ -1,0 +1,148 @@
+target/
+.idea/
+.vscode/
+*.class
+*.log
+.DS_Store
+Thumbs.db
+
+REPOSITORIO GITHUB - PHARMASOFT
+
+Evidencia: GA7-220501096-AA2-EV01
+
+El proyecto debe ser publicado en GitHub y en este archivo se debe pegar el enlace final del repositorio.
+
+Enlace:
+https://github.com/PEGAR-AQUI-EL-USUARIO/pharmasoft
+
+Nota: reemplazar esta dirección por el enlace real después de crear el repositorio en GitHub.
+
+EVIDENCIA GA7-220501096-AA2-EV01
+
+Contenido:
+- Proyecto Java Maven.
+- Módulo CRUD de productos.
+- Conexión JDBC con MySQL.
+- Script de creación de base de datos.
+- README con instrucciones.
+- Archivo de versionamiento.
+- Archivo para colocar el enlace del repositorio.
+
+ANTES DE ENTREGAR:
+1. Instalar Java 17, Maven y MySQL.
+2. Ejecutar database/pharmasoft.sql.
+3. Revisar usuario y contraseña de MySQL en ConexionBD.java.
+4. Probar registrar, consultar, actualizar y eliminar.
+5. Crear el repositorio de GitHub y subir el proyecto.
+6. Pegar el enlace real en enlace_repositorio.txt.
+7. Comprimir la carpeta con el nombre:
+   EIDERANDRESMENDOZAPEREZ_AA2_EV01.zip
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.pharmasoft</groupId>
+    <artifactId>pharmasoft</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>9.4.0</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <mainClass>com.pharmasoft.vista.PharmasoftApp</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+# PharmaSoft - GA7-220501096-AA2-EV01
+
+Módulo de gestión de productos para el sistema de inventario de una droguería.
+
+## Funcionalidades
+
+- Registrar productos.
+- Consultar todos los productos.
+- Buscar un producto por código.
+- Actualizar productos.
+- Eliminar productos.
+- Conexión a MySQL mediante JDBC.
+
+## Tecnologías
+
+- Java 17
+- Maven
+- MySQL
+- JDBC
+- Swing
+
+## Requisitos
+
+1. JDK 17 o superior.
+2. Maven.
+3. MySQL Server.
+4. Un IDE como IntelliJ IDEA, Eclipse o NetBeans.
+
+## Configuración de la base de datos
+
+1. Iniciar MySQL.
+2. Ejecutar el archivo `database/pharmasoft.sql`.
+3. Por defecto, la aplicación usa:
+   - Servidor: localhost
+   - Puerto: 3306
+   - Base de datos: pharmasoft
+   - Usuario: root
+   - Contraseña: root
+
+Si tu instalación de MySQL utiliza otra contraseña, edita `src/main/java/com/pharmasoft/conexion/ConexionBD.java`.
+
+## Ejecutar
+
+Desde la carpeta del proyecto:
+
+```bash
+mvn clean compile
+mvn exec:java
+```
+
+También puedes abrir el proyecto desde un IDE y ejecutar `PharmasoftApp`.
+
+## Nota
+
+Este proyecto corresponde al módulo CRUD de productos de PharmaSoft y sirve como base para continuar con módulos de proveedores, entradas, salidas, usuarios y reportes.
+
+VERSIONAMIENTO DEL PROYECTO
+
+El proyecto está preparado para trabajar con Git.
+
+Comandos recomendados:
+
+git init
+git add .
+git commit -m "Primera version PharmaSoft GA7-AA2-EV01"
+git branch -M main
+git remote add origin URL_DEL_REPOSITORIO
+git push -u origin main
+
+
