@@ -1,0 +1,1580 @@
+#!/bin/sh
+#
+# An example hook script to verify what is about to be committed
+# by applypatch from an e-mail message.
+#
+# The hook should exit with non-zero status after issuing an
+# appropriate message if it wants to stop the commit.
+#
+# To enable this hook, rename this file to "pre-applypatch".
+
+. git-sh-setup
+precommit="$(git rev-parse --git-path hooks/pre-commit)"
+test -x "$precommit" && exec "$precommit" ${1+"$@"}
+:
+
+#!/bin/sh
+#
+# An example hook script to verify what is about to be committed.
+# Called by "git commit" with no arguments.  The hook should
+# exit with non-zero status after issuing an appropriate message if
+# it wants to stop the commit.
+#
+# To enable this hook, rename this file to "pre-commit".
+
+if git rev-parse --verify HEAD >/dev/null 2>&1
+then
+	against=HEAD
+else
+	# Initial commit: diff against an empty tree object
+	against=$(git hash-object -t tree /dev/null)
+fi
+
+# If you want to allow non-ASCII filenames set this variable to true.
+allownonascii=$(git config --type=bool hooks.allownonascii)
+
+# Redirect output to stderr.
+exec 1>&2
+
+# Cross platform projects tend to avoid non-ASCII filenames; prevent
+# them from being added to the repository. We exploit the fact that the
+# printable range starts at the space character and ends with tilde.
+if [ "$allownonascii" != "true" ] &&
+	# Note that the use of brackets around a tr range is ok here, (it's
+	# even required, for portability to Solaris 10's /usr/bin/tr), since
+	# the square bracket bytes happen to fall in the designated range.
+	test $(git diff-index --cached --name-only --diff-filter=A -z $against |
+	  LC_ALL=C tr -d '[ -~]\0' | wc -c) != 0
+then
+	cat <<\EOF
+Error: Attempt to add a non-ASCII file name.
+
+This can cause problems if you want to work with people on other platforms.
+
+To be portable it is advisable to rename the file.
+
+If you know what you are doing you can disable this check using:
+
+  git config hooks.allownonascii true
+EOF
+	exit 1
+fi
+
+# If there are whitespace errors, print the offending file names and fail.
+exec git diff-index --check --cached $against --
+
+#!/bin/sh
+#
+# An example hook script to verify what is about to be committed.
+# Called by "git merge" with no arguments.  The hook should
+# exit with non-zero status after issuing an appropriate message to
+# stderr if it wants to stop the merge commit.
+#
+# To enable this hook, rename this file to "pre-merge-commit".
+
+. git-sh-setup
+test -x "$GIT_DIR/hooks/pre-commit" &&
+        exec "$GIT_DIR/hooks/pre-commit"
+:
+
+#!/bin/sh
+#
+# An example hook script to prepare the commit log message.
+# Called by "git commit" with the name of the file that has the
+# commit message, followed by the description of the commit
+# message's source.  The hook's purpose is to edit the commit
+# message file.  If the hook fails with a non-zero status,
+# the commit is aborted.
+#
+# To enable this hook, rename this file to "prepare-commit-msg".
+
+# This hook includes three examples. The first one removes the
+# "# Please enter the commit message..." help message.
+#
+# The second includes the output of "git diff --name-status -r"
+# into the message, just before the "git status" output.  It is
+# commented because it doesn't cope with --amend or with squashed
+# commits.
+#
+# The third example adds a Signed-off-by line to the message, that can
+# still be edited.  This is rarely a good idea.
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+SHA1=$3
+
+/usr/bin/perl -i.bak -ne 'print unless(m/^. Please enter the commit message/..m/^#$/)' "$COMMIT_MSG_FILE"
+
+# case "$COMMIT_SOURCE,$SHA1" in
+#  ,|template,)
+#    /usr/bin/perl -i.bak -pe '
+#       print "\n" . `git diff --cached --name-status -r`
+# 	 if /^#/ && $first++ == 0' "$COMMIT_MSG_FILE" ;;
+#  *) ;;
+# esac
+
+# SOB=$(git var GIT_COMMITTER_IDENT | sed -n 's/^\(.*>\).*$/Signed-off-by: \1/p')
+# git interpret-trailers --in-place --trailer "$SOB" "$COMMIT_MSG_FILE"
+# if test -z "$COMMIT_SOURCE"
+# then
+#   /usr/bin/perl -i.bak -pe 'print "\n" if !$first_line++' "$COMMIT_MSG_FILE"
+# fi
+
+#!/bin/sh
+
+# An example hook script to verify what is about to be pushed.  Called by "git
+# push" after it has checked the remote status, but before anything has been
+# pushed.  If this script exits with a non-zero status nothing will be pushed.
+#
+# This hook is called with the following parameters:
+#
+# $1 -- Name of the remote to which the push is being done
+# $2 -- URL to which the push is being done
+#
+# If pushing without using a named remote those arguments will be equal.
+#
+# Information about the commits which are being pushed is supplied as lines to
+# the standard input in the form:
+#
+#   <local ref> <local oid> <remote ref> <remote oid>
+#
+# This sample shows how to prevent push of commits where the log message starts
+# with "WIP" (work in progress).
+
+remote="$1"
+url="$2"
+
+zero=$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')
+
+while read local_ref local_oid remote_ref remote_oid
+do
+	if test "$local_oid" = "$zero"
+	then
+		# Handle delete
+		:
+	else
+		if test "$remote_oid" = "$zero"
+		then
+			# New branch, examine all commits
+			range="$local_oid"
+		else
+			# Update to existing branch, examine new commits
+			range="$remote_oid..$local_oid"
+		fi
+
+		# Check for WIP commit
+		commit=$(git rev-list -n 1 --grep '^WIP' "$range")
+		if test -n "$commit"
+		then
+			echo >&2 "Found WIP commit in $local_ref, not pushing"
+			exit 1
+		fi
+	fi
+done
+
+exit 0
+
+#!/bin/sh
+#
+# Copyright (c) 2006, 2008 Junio C Hamano
+#
+# The "pre-rebase" hook is run just before "git rebase" starts doing
+# its job, and can prevent the command from running by exiting with
+# non-zero status.
+#
+# The hook is called with the following parameters:
+#
+# $1 -- the upstream the series was forked from.
+# $2 -- the branch being rebased (or empty when rebasing the current branch).
+#
+# This sample shows how to prevent topic branches that are already
+# merged to 'next' branch from getting rebased, because allowing it
+# would result in rebasing already published history.
+
+publish=next
+basebranch="$1"
+if test "$#" = 2
+then
+	topic="refs/heads/$2"
+else
+	topic=`git symbolic-ref HEAD` ||
+	exit 0 ;# we do not interrupt rebasing detached HEAD
+fi
+
+case "$topic" in
+refs/heads/??/*)
+	;;
+*)
+	exit 0 ;# we do not interrupt others.
+	;;
+esac
+
+# Now we are dealing with a topic branch being rebased
+# on top of master.  Is it OK to rebase it?
+
+# Does the topic really exist?
+git show-ref -q "$topic" || {
+	echo >&2 "No such branch $topic"
+	exit 1
+}
+
+# Is topic fully merged to master?
+not_in_master=`git rev-list --pretty=oneline ^master "$topic"`
+if test -z "$not_in_master"
+then
+	echo >&2 "$topic is fully merged to master; better remove it."
+	exit 1 ;# we could allow it, but there is no point.
+fi
+
+# Is topic ever merged to next?  If so you should not be rebasing it.
+only_next_1=`git rev-list ^master "^$topic" ${publish} | sort`
+only_next_2=`git rev-list ^master           ${publish} | sort`
+if test "$only_next_1" = "$only_next_2"
+then
+	not_in_topic=`git rev-list "^$topic" master`
+	if test -z "$not_in_topic"
+	then
+		echo >&2 "$topic is already up to date with master"
+		exit 1 ;# we could allow it, but there is no point.
+	else
+		exit 0
+	fi
+else
+	not_in_next=`git rev-list --pretty=oneline ^${publish} "$topic"`
+	/usr/bin/perl -e '
+		my $topic = $ARGV[0];
+		my $msg = "* $topic has commits already merged to public branch:\n";
+		my (%not_in_next) = map {
+			/^([0-9a-f]+) /;
+			($1 => 1);
+		} split(/\n/, $ARGV[1]);
+		for my $elem (map {
+				/^([0-9a-f]+) (.*)$/;
+				[$1 => $2];
+			} split(/\n/, $ARGV[2])) {
+			if (!exists $not_in_next{$elem->[0]}) {
+				if ($msg) {
+					print STDERR $msg;
+					undef $msg;
+				}
+				print STDERR " $elem->[1]\n";
+			}
+		}
+	' "$topic" "$not_in_next" "$not_in_master"
+	exit 1
+fi
+
+<<\DOC_END
+
+This sample hook safeguards topic branches that have been
+published from being rewound.
+
+The workflow assumed here is:
+
+ * Once a topic branch forks from "master", "master" is never
+   merged into it again (either directly or indirectly).
+
+ * Once a topic branch is fully cooked and merged into "master",
+   it is deleted.  If you need to build on top of it to correct
+   earlier mistakes, a new topic branch is created by forking at
+   the tip of the "master".  This is not strictly necessary, but
+   it makes it easier to keep your history simple.
+
+ * Whenever you need to test or publish your changes to topic
+   branches, merge them into "next" branch.
+
+The script, being an example, hardcodes the publish branch name
+to be "next", but it is trivial to make it configurable via
+$GIT_DIR/config mechanism.
+
+With this workflow, you would want to know:
+
+(1) ... if a topic branch has ever been merged to "next".  Young
+    topic branches can have stupid mistakes you would rather
+    clean up before publishing, and things that have not been
+    merged into other branches can be easily rebased without
+    affecting other people.  But once it is published, you would
+    not want to rewind it.
+
+(2) ... if a topic branch has been fully merged to "master".
+    Then you can delete it.  More importantly, you should not
+    build on top of it -- other people may already want to
+    change things related to the topic as patches against your
+    "master", so if you need further changes, it is better to
+    fork the topic (perhaps with the same name) afresh from the
+    tip of "master".
+
+Let's look at this example:
+
+		   o---o---o---o---o---o---o---o---o---o "next"
+		  /       /           /           /
+		 /   a---a---b A     /           /
+		/   /               /           /
+	       /   /   c---c---c---c B         /
+	      /   /   /             \         /
+	     /   /   /   b---b C     \       /
+	    /   /   /   /             \     /
+    ---o---o---o---o---o---o---o---o---o---o---o "master"
+
+
+A, B and C are topic branches.
+
+ * A has one fix since it was merged up to "next".
+
+ * B has finished.  It has been fully merged up to "master" and "next",
+   and is ready to be deleted.
+
+ * C has not merged to "next" at all.
+
+We would want to allow C to be rebased, refuse A, and encourage
+B to be deleted.
+
+To compute (1):
+
+	git rev-list ^master ^topic next
+	git rev-list ^master        next
+
+	if these match, topic has not merged in next at all.
+
+To compute (2):
+
+	git rev-list master..topic
+
+	if this is empty, it is fully merged to "master".
+
+DOC_END
+
+#!/bin/sh
+#
+# An example hook script to make use of push options.
+# The example simply echoes all push options that start with 'echoback='
+# and rejects all pushes when the "reject" push option is used.
+#
+# To enable this hook, rename this file to "pre-receive".
+
+if test -n "$GIT_PUSH_OPTION_COUNT"
+then
+	i=0
+	while test "$i" -lt "$GIT_PUSH_OPTION_COUNT"
+	do
+		eval "value=\$GIT_PUSH_OPTION_$i"
+		case "$value" in
+		echoback=*)
+			echo "echo from the pre-receive-hook: ${value#*=}" >&2
+			;;
+		reject)
+			exit 1
+		esac
+		i=$((i + 1))
+	done
+fi
+
+#!/bin/sh
+
+# An example hook script to update a checked-out tree on a git push.
+#
+# This hook is invoked by git-receive-pack(1) when it reacts to git
+# push and updates reference(s) in its repository, and when the push
+# tries to update the branch that is currently checked out and the
+# receive.denyCurrentBranch configuration variable is set to
+# updateInstead.
+#
+# By default, such a push is refused if the working tree and the index
+# of the remote repository has any difference from the currently
+# checked out commit; when both the working tree and the index match
+# the current commit, they are updated to match the newly pushed tip
+# of the branch. This hook is to be used to override the default
+# behaviour; however the code below reimplements the default behaviour
+# as a starting point for convenient modification.
+#
+# The hook receives the commit with which the tip of the current
+# branch is going to be updated:
+commit=$1
+
+# It can exit with a non-zero status to refuse the push (when it does
+# so, it must not modify the index or the working tree).
+die () {
+	echo >&2 "$*"
+	exit 1
+}
+
+# Or it can make any necessary changes to the working tree and to the
+# index to bring them to the desired state when the tip of the current
+# branch is updated to the new commit, and exit with a zero status.
+#
+# For example, the hook can simply run git read-tree -u -m HEAD "$1"
+# in order to emulate git fetch that is run in the reverse direction
+# with git push, as the two-tree form of git read-tree -u -m is
+# essentially the same as git switch or git checkout that switches
+# branches while keeping the local changes in the working tree that do
+# not interfere with the difference between the branches.
+
+# The below is a more-or-less exact translation to shell of the C code
+# for the default behaviour for git's push-to-checkout hook defined in
+# the push_to_deploy() function in builtin/receive-pack.c.
+#
+# Note that the hook will be executed from the repository directory,
+# not from the working tree, so if you want to perform operations on
+# the working tree, you will have to adapt your code accordingly, e.g.
+# by adding "cd .." or using relative paths.
+
+if ! git update-index -q --ignore-submodules --refresh
+then
+	die "Up-to-date check failed"
+fi
+
+if ! git diff-files --quiet --ignore-submodules --
+then
+	die "Working directory has unstaged changes"
+fi
+
+# This is a rough translation of:
+#
+#   head_has_history() ? "HEAD" : EMPTY_TREE_SHA1_HEX
+if git cat-file -e HEAD 2>/dev/null
+then
+	head=HEAD
+else
+	head=$(git hash-object -t tree --stdin </dev/null)
+fi
+
+if ! git diff-index --quiet --cached --ignore-submodules $head --
+then
+	die "Working directory has staged changes"
+fi
+
+if ! git read-tree -u -m "$commit"
+then
+	die "Could not update working tree to new HEAD"
+fi
+
+#!/bin/sh
+
+# An example hook script to validate a patch (and/or patch series) before
+# sending it via email.
+#
+# The hook should exit with non-zero status after issuing an appropriate
+# message if it wants to prevent the email(s) from being sent.
+#
+# To enable this hook, rename this file to "sendemail-validate".
+#
+# By default, it will only check that the patch(es) can be applied on top of
+# the default upstream branch without conflicts in a secondary worktree. After
+# validation (successful or not) of the last patch of a series, the worktree
+# will be deleted.
+#
+# The following config variables can be set to change the default remote and
+# remote ref that are used to apply the patches against:
+#
+#   sendemail.validateRemote (default: origin)
+#   sendemail.validateRemoteRef (default: HEAD)
+#
+# Replace the TODO placeholders with appropriate checks according to your
+# needs.
+
+validate_cover_letter () {
+	file="$1"
+	# TODO: Replace with appropriate checks (e.g. spell checking).
+	true
+}
+
+validate_patch () {
+	file="$1"
+	# Ensure that the patch applies without conflicts.
+	git am -3 "$file" || return
+	# TODO: Replace with appropriate checks for this patch
+	# (e.g. checkpatch.pl).
+	true
+}
+
+validate_series () {
+	# TODO: Replace with appropriate checks for the whole series
+	# (e.g. quick build, coding style checks, etc.).
+	true
+}
+
+# main -------------------------------------------------------------------------
+
+if test "$GIT_SENDEMAIL_FILE_COUNTER" = 1
+then
+	remote=$(git config --default origin --get sendemail.validateRemote) &&
+	ref=$(git config --default HEAD --get sendemail.validateRemoteRef) &&
+	worktree=$(mktemp --tmpdir -d sendemail-validate.XXXXXXX) &&
+	git worktree add -fd --checkout "$worktree" "refs/remotes/$remote/$ref" &&
+	git config --replace-all sendemail.validateWorktree "$worktree"
+else
+	worktree=$(git config --get sendemail.validateWorktree)
+fi || {
+	echo "sendemail-validate: error: failed to prepare worktree" >&2
+	exit 1
+}
+
+unset GIT_DIR GIT_WORK_TREE
+cd "$worktree" &&
+
+if grep -q "^diff --git " "$1"
+then
+	validate_patch "$1"
+else
+	validate_cover_letter "$1"
+fi &&
+
+if test "$GIT_SENDEMAIL_FILE_COUNTER" = "$GIT_SENDEMAIL_FILE_TOTAL"
+then
+	git config --unset-all sendemail.validateWorktree &&
+	trap 'git worktree remove -ff "$worktree"' EXIT &&
+	validate_series
+fi
+
+#!/bin/sh
+#
+# An example hook script to block unannotated tags from entering.
+# Called by "git receive-pack" with arguments: refname sha1-old sha1-new
+#
+# To enable this hook, rename this file to "update".
+#
+# Config
+# ------
+# hooks.allowunannotated
+#   This boolean sets whether unannotated tags will be allowed into the
+#   repository.  By default they won't be.
+# hooks.allowdeletetag
+#   This boolean sets whether deleting tags will be allowed in the
+#   repository.  By default they won't be.
+# hooks.allowmodifytag
+#   This boolean sets whether a tag may be modified after creation. By default
+#   it won't be.
+# hooks.allowdeletebranch
+#   This boolean sets whether deleting branches will be allowed in the
+#   repository.  By default they won't be.
+# hooks.denycreatebranch
+#   This boolean sets whether remotely creating branches will be denied
+#   in the repository.  By default this is allowed.
+#
+
+# --- Command line
+refname="$1"
+oldrev="$2"
+newrev="$3"
+
+# --- Safety check
+if [ -z "$GIT_DIR" ]; then
+	echo "Don't run this script from the command line." >&2
+	echo " (if you want, you could supply GIT_DIR then run" >&2
+	echo "  $0 <ref> <oldrev> <newrev>)" >&2
+	exit 1
+fi
+
+if [ -z "$refname" -o -z "$oldrev" -o -z "$newrev" ]; then
+	echo "usage: $0 <ref> <oldrev> <newrev>" >&2
+	exit 1
+fi
+
+# --- Config
+allowunannotated=$(git config --type=bool hooks.allowunannotated)
+allowdeletebranch=$(git config --type=bool hooks.allowdeletebranch)
+denycreatebranch=$(git config --type=bool hooks.denycreatebranch)
+allowdeletetag=$(git config --type=bool hooks.allowdeletetag)
+allowmodifytag=$(git config --type=bool hooks.allowmodifytag)
+
+# check for no description
+projectdesc=$(sed -e '1q' "$GIT_DIR/description")
+case "$projectdesc" in
+"Unnamed repository"* | "")
+	echo "*** Project description file hasn't been set" >&2
+	exit 1
+	;;
+esac
+
+# --- Check types
+# if $newrev is 0000...0000, it's a commit to delete a ref.
+zero=$(git hash-object --stdin </dev/null | tr '[0-9a-f]' '0')
+if [ "$newrev" = "$zero" ]; then
+	newrev_type=delete
+else
+	newrev_type=$(git cat-file -t $newrev)
+fi
+
+case "$refname","$newrev_type" in
+	refs/tags/*,commit)
+		# un-annotated tag
+		short_refname=${refname##refs/tags/}
+		if [ "$allowunannotated" != "true" ]; then
+			echo "*** The un-annotated tag, $short_refname, is not allowed in this repository" >&2
+			echo "*** Use 'git tag [ -a | -s ]' for tags you want to propagate." >&2
+			exit 1
+		fi
+		;;
+	refs/tags/*,delete)
+		# delete tag
+		if [ "$allowdeletetag" != "true" ]; then
+			echo "*** Deleting a tag is not allowed in this repository" >&2
+			exit 1
+		fi
+		;;
+	refs/tags/*,tag)
+		# annotated tag
+		if [ "$allowmodifytag" != "true" ] && git rev-parse $refname > /dev/null 2>&1
+		then
+			echo "*** Tag '$refname' already exists." >&2
+			echo "*** Modifying a tag is not allowed in this repository." >&2
+			exit 1
+		fi
+		;;
+	refs/heads/*,commit)
+		# branch
+		if [ "$oldrev" = "$zero" -a "$denycreatebranch" = "true" ]; then
+			echo "*** Creating a branch is not allowed in this repository" >&2
+			exit 1
+		fi
+		;;
+	refs/heads/*,delete)
+		# delete branch
+		if [ "$allowdeletebranch" != "true" ]; then
+			echo "*** Deleting a branch is not allowed in this repository" >&2
+			exit 1
+		fi
+		;;
+	refs/remotes/*,commit)
+		# tracking branch
+		;;
+	refs/remotes/*,delete)
+		# delete tracking branch
+		if [ "$allowdeletebranch" != "true" ]; then
+			echo "*** Deleting a tracking branch is not allowed in this repository" >&2
+			exit 1
+		fi
+		;;
+	*)
+		# Anything else (is there anything else?)
+		echo "*** Update hook: unknown type of update to ref $refname of type $newrev_type" >&2
+		exit 1
+		;;
+esac
+
+# --- Finished
+exit 0
+
+#!/bin/sh
+#
+# An example hook script to check the commit log message taken by
+# applypatch from an e-mail message.
+#
+# The hook should exit with non-zero status after issuing an
+# appropriate message if it wants to stop the commit.  The hook is
+# allowed to edit the commit message file.
+#
+# To enable this hook, rename this file to "applypatch-msg".
+
+. git-sh-setup
+commitmsg="$(git rev-parse --git-path hooks/commit-msg)"
+test -x "$commitmsg" && exec "$commitmsg" ${1+"$@"}
+:
+
+#!/bin/sh
+#
+# An example hook script to check the commit log message.
+# Called by "git commit" with one argument, the name of the file
+# that has the commit message.  The hook should exit with non-zero
+# status after issuing an appropriate message if it wants to stop the
+# commit.  The hook is allowed to edit the commit message file.
+#
+# To enable this hook, rename this file to "commit-msg".
+
+# Uncomment the below to add a Signed-off-by line to the message.
+# Doing this in a hook is a bad idea in general, but the prepare-commit-msg
+# hook is more suited to it.
+#
+# SOB=$(git var GIT_AUTHOR_IDENT | sed -n 's/^\(.*>\).*$/Signed-off-by: \1/p')
+# grep -qs "^$SOB" "$1" || echo "$SOB" >> "$1"
+
+# This example catches duplicate Signed-off-by lines.
+
+test "" = "$(grep '^Signed-off-by: ' "$1" |
+	 sort | uniq -c | sed -e '/^[ 	]*1[ 	]/d')" || {
+	echo >&2 Duplicate Signed-off-by lines.
+	exit 1
+}
+
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use IPC::Open2;
+
+# An example hook script to integrate Watchman
+# (https://facebook.github.io/watchman/) with git to speed up detecting
+# new and modified files.
+#
+# The hook is passed a version (currently 2) and last update token
+# formatted as a string and outputs to stdout a new update token and
+# all files that have been modified since the update token. Paths must
+# be relative to the root of the working tree and separated by a single NUL.
+#
+# To enable this hook, rename this file to "query-watchman" and set
+# 'git config core.fsmonitor .git/hooks/query-watchman'
+#
+my ($version, $last_update_token) = @ARGV;
+
+# Uncomment for debugging
+# print STDERR "$0 $version $last_update_token\n";
+
+# Check the hook interface version
+if ($version ne 2) {
+	die "Unsupported query-fsmonitor hook version '$version'.\n" .
+	    "Falling back to scanning...\n";
+}
+
+my $git_work_tree = get_working_dir();
+
+my $retry = 1;
+
+my $json_pkg;
+eval {
+	require JSON::XS;
+	$json_pkg = "JSON::XS";
+	1;
+} or do {
+	require JSON::PP;
+	$json_pkg = "JSON::PP";
+};
+
+launch_watchman();
+
+sub launch_watchman {
+	my $o = watchman_query();
+	if (is_work_tree_watched($o)) {
+		output_result($o->{clock}, @{$o->{files}});
+	}
+}
+
+sub output_result {
+	my ($clockid, @files) = @_;
+
+	# Uncomment for debugging watchman output
+	# open (my $fh, ">", ".git/watchman-output.out");
+	# binmode $fh, ":utf8";
+	# print $fh "$clockid\n@files\n";
+	# close $fh;
+
+	binmode STDOUT, ":utf8";
+	print $clockid;
+	print "\0";
+	local $, = "\0";
+	print @files;
+}
+
+sub watchman_clock {
+	my $response = qx/watchman clock "$git_work_tree"/;
+	die "Failed to get clock id on '$git_work_tree'.\n" .
+		"Falling back to scanning...\n" if $? != 0;
+
+	return $json_pkg->new->utf8->decode($response);
+}
+
+sub watchman_query {
+	my $pid = open2(\*CHLD_OUT, \*CHLD_IN, 'watchman -j --no-pretty')
+	or die "open2() failed: $!\n" .
+	"Falling back to scanning...\n";
+
+	# In the query expression below we're asking for names of files that
+	# changed since $last_update_token but not from the .git folder.
+	#
+	# To accomplish this, we're using the "since" generator to use the
+	# recency index to select candidate nodes and "fields" to limit the
+	# output to file names only. Then we're using the "expression" term to
+	# further constrain the results.
+	my $last_update_line = "";
+	if (substr($last_update_token, 0, 1) eq "c") {
+		$last_update_token = "\"$last_update_token\"";
+		$last_update_line = qq[\n"since": $last_update_token,];
+	}
+	my $query = <<"	END";
+		["query", "$git_work_tree", {$last_update_line
+			"fields": ["name"],
+			"expression": ["not", ["dirname", ".git"]]
+		}]
+	END
+
+	# Uncomment for debugging the watchman query
+	# open (my $fh, ">", ".git/watchman-query.json");
+	# print $fh $query;
+	# close $fh;
+
+	print CHLD_IN $query;
+	close CHLD_IN;
+	my $response = do {local $/; <CHLD_OUT>};
+
+	# Uncomment for debugging the watch response
+	# open ($fh, ">", ".git/watchman-response.json");
+	# print $fh $response;
+	# close $fh;
+
+	die "Watchman: command returned no output.\n" .
+	"Falling back to scanning...\n" if $response eq "";
+	die "Watchman: command returned invalid output: $response\n" .
+	"Falling back to scanning...\n" unless $response =~ /^\{/;
+
+	return $json_pkg->new->utf8->decode($response);
+}
+
+sub is_work_tree_watched {
+	my ($output) = @_;
+	my $error = $output->{error};
+	if ($retry > 0 and $error and $error =~ m/unable to resolve root .* directory (.*) is not watched/) {
+		$retry--;
+		my $response = qx/watchman watch "$git_work_tree"/;
+		die "Failed to make watchman watch '$git_work_tree'.\n" .
+		    "Falling back to scanning...\n" if $? != 0;
+		$output = $json_pkg->new->utf8->decode($response);
+		$error = $output->{error};
+		die "Watchman: $error.\n" .
+		"Falling back to scanning...\n" if $error;
+
+		# Uncomment for debugging watchman output
+		# open (my $fh, ">", ".git/watchman-output.out");
+		# close $fh;
+
+		# Watchman will always return all files on the first query so
+		# return the fast "everything is dirty" flag to git and do the
+		# Watchman query just to get it over with now so we won't pay
+		# the cost in git to look up each individual file.
+		my $o = watchman_clock();
+		$error = $output->{error};
+
+		die "Watchman: $error.\n" .
+		"Falling back to scanning...\n" if $error;
+
+		output_result($o->{clock}, ("/"));
+		$last_update_token = $o->{clock};
+
+		eval { launch_watchman() };
+		return 0;
+	}
+
+	die "Watchman: $error.\n" .
+	"Falling back to scanning...\n" if $error;
+
+	return 1;
+}
+
+sub get_working_dir {
+	my $working_dir;
+	if ($^O =~ 'msys' || $^O =~ 'cygwin') {
+		$working_dir = Win32::GetCwd();
+		$working_dir =~ tr/\\/\//;
+	} else {
+		require Cwd;
+		$working_dir = Cwd::cwd();
+	}
+
+	return $working_dir;
+}
+
+#!/bin/sh
+#
+# An example hook script to prepare a packed repository for use over
+# dumb transports.
+#
+# To enable this hook, rename this file to "post-update".
+
+exec git update-server-info
+# git ls-files --others --exclude-from=.git/info/exclude
+# Lines that start with '#' are comments.
+# For a project mostly in C, the following would be a good set of
+# exclude patterns (uncomment them if you want to use them):
+# *.[oa]
+# *~
+0000000000000000000000000000000000000000 766baa2e6e68d8e16ecf77793eba2b0f7b7e1281 Eider Andres Mendoza Perez <eider@pharmasoft.local> 1786935886 +0000	commit (initial): Primera version PharmaSoft GA7-AA2-EV01
+0000000000000000000000000000000000000000 766baa2e6e68d8e16ecf77793eba2b0f7b7e1281 Eider Andres Mendoza Perez <eider@pharmasoft.local> 1786935886 +0000	commit (initial): Primera version PharmaSoft GA7-AA2-EV01
+
+
+766baa2e6e68d8e16ecf77793eba2b0f7b7e1281
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+[user]
+	name = Eider Andres Mendoza Perez
+	email = eider@pharmasoft.local
+
+Unnamed repository; edit this file 'description' to name the repository.
+
+ref: refs/heads/master
+
+Primera version PharmaSoft GA7-AA2-EV01
+
+CREATE DATABASE IF NOT EXISTS pharmasoft
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
+
+USE pharmasoft;
+
+CREATE TABLE IF NOT EXISTS productos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    codigo VARCHAR(30) NOT NULL UNIQUE,
+    nombre VARCHAR(120) NOT NULL,
+    categoria VARCHAR(80) NOT NULL,
+    precio DECIMAL(12,2) NOT NULL,
+    cantidad INT NOT NULL DEFAULT 0,
+    fecha_vencimiento DATE NULL
+);
+
+INSERT INTO productos (codigo, nombre, categoria, precio, cantidad, fecha_vencimiento)
+VALUES
+('MED001', 'Acetaminofen 500 mg', 'Analgesicos', 5000.00, 50, '2028-06-30'),
+('MED002', 'Ibuprofeno 400 mg', 'Antiinflamatorios', 7000.00, 30, '2027-11-30')
+ON DUPLICATE KEY UPDATE codigo = codigo;
+RELACION CON ARTEFACTOS PREVIOS
+
+El módulo implementado corresponde al componente de gestión de productos de PharmaSoft.
+
+Requisitos relacionados:
+- Registrar productos.
+- Consultar productos.
+- Actualizar productos.
+- Eliminar productos.
+- Mantener información de inventario.
+
+Clases principales:
+- Producto: representa los datos del producto.
+- ProductoDAO: contiene las operaciones CRUD y JDBC.
+- ConexionBD: administra la conexión con MySQL.
+- PharmasoftApp: interfaz de usuario.
+
+Arquitectura aplicada:
+Presentación -> DAO/Lógica de acceso -> Base de datos MySQL.
+
+Esto permite relacionar la codificación con los artefactos de análisis y diseño realizados anteriormente.
+
+package com.pharmasoft.conexion;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+public final class ConexionBD {
+
+    private static final String URL =
+            "jdbc:mysql://localhost:3306/pharmasoft?useSSL=false&serverTimezone=UTC";
+    private static final String USUARIO = "root";
+    private static final String CONTRASENA = "root";
+
+    private ConexionBD() {
+    }
+
+    public static Connection obtenerConexion() throws SQLException {
+        return DriverManager.getConnection(URL, USUARIO, CONTRASENA);
+    }
+}
+package com.pharmasoft.dao;
+
+import com.pharmasoft.conexion.ConexionBD;
+import com.pharmasoft.modelo.Producto;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class ProductoDAO {
+
+    public boolean insertar(Producto producto) throws SQLException {
+        String sql = "INSERT INTO productos " +
+                "(codigo, nombre, categoria, precio, cantidad, fecha_vencimiento) " +
+                "VALUES (?, ?, ?, ?, ?, ?)";
+
+        try (Connection conexion = ConexionBD.obtenerConexion();
+             PreparedStatement sentencia = conexion.prepareStatement(sql)) {
+
+            cargarParametros(sentencia, producto);
+            return sentencia.executeUpdate() > 0;
+        }
+    }
+
+    public List<Producto> consultarTodos() throws SQLException {
+        String sql = "SELECT id, codigo, nombre, categoria, precio, cantidad, fecha_vencimiento " +
+                "FROM productos ORDER BY id";
+        List<Producto> productos = new ArrayList<>();
+
+        try (Connection conexion = ConexionBD.obtenerConexion();
+             PreparedStatement sentencia = conexion.prepareStatement(sql);
+             ResultSet resultado = sentencia.executeQuery()) {
+
+            while (resultado.next()) {
+                productos.add(mapearProducto(resultado));
+            }
+        }
+        return productos;
+    }
+
+    public Producto buscarPorCodigo(String codigo) throws SQLException {
+        String sql = "SELECT id, codigo, nombre, categoria, precio, cantidad, fecha_vencimiento " +
+                "FROM productos WHERE codigo = ?";
+
+        try (Connection conexion = ConexionBD.obtenerConexion();
+             PreparedStatement sentencia = conexion.prepareStatement(sql)) {
+
+            sentencia.setString(1, codigo);
+
+            try (ResultSet resultado = sentencia.executeQuery()) {
+                if (resultado.next()) {
+                    return mapearProducto(resultado);
+                }
+            }
+        }
+        return null;
+    }
+
+    public boolean actualizar(Producto producto) throws SQLException {
+        String sql = "UPDATE productos SET codigo=?, nombre=?, categoria=?, precio=?, " +
+                "cantidad=?, fecha_vencimiento=? WHERE id=?";
+
+        try (Connection conexion = ConexionBD.obtenerConexion();
+             PreparedStatement sentencia = conexion.prepareStatement(sql)) {
+
+            cargarParametros(sentencia, producto);
+            sentencia.setInt(7, producto.getId());
+            return sentencia.executeUpdate() > 0;
+        }
+    }
+
+    public boolean eliminar(int id) throws SQLException {
+        String sql = "DELETE FROM productos WHERE id=?";
+
+        try (Connection conexion = ConexionBD.obtenerConexion();
+             PreparedStatement sentencia = conexion.prepareStatement(sql)) {
+
+            sentencia.setInt(1, id);
+            return sentencia.executeUpdate() > 0;
+        }
+    }
+
+    private void cargarParametros(PreparedStatement sentencia, Producto producto)
+            throws SQLException {
+        sentencia.setString(1, producto.getCodigo());
+        sentencia.setString(2, producto.getNombre());
+        sentencia.setString(3, producto.getCategoria());
+        sentencia.setBigDecimal(4, producto.getPrecio());
+        sentencia.setInt(5, producto.getCantidad());
+
+        if (producto.getFechaVencimiento() != null) {
+            sentencia.setDate(6, Date.valueOf(producto.getFechaVencimiento()));
+        } else {
+            sentencia.setNull(6, Types.DATE);
+        }
+    }
+
+    private Producto mapearProducto(ResultSet resultado) throws SQLException {
+        Date fecha = resultado.getDate("fecha_vencimiento");
+
+        return new Producto(
+                resultado.getInt("id"),
+                resultado.getString("codigo"),
+                resultado.getString("nombre"),
+                resultado.getString("categoria"),
+                resultado.getBigDecimal("precio"),
+                resultado.getInt("cantidad"),
+                fecha != null ? fecha.toLocalDate() : null
+        );
+    }
+}
+package com.pharmasoft.modelo;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+public class Producto {
+    private int id;
+    private String codigo;
+    private String nombre;
+    private String categoria;
+    private BigDecimal precio;
+    private int cantidad;
+    private LocalDate fechaVencimiento;
+
+    public Producto() {
+    }
+
+    public Producto(int id, String codigo, String nombre, String categoria,
+                    BigDecimal precio, int cantidad, LocalDate fechaVencimiento) {
+        this.id = id;
+        this.codigo = codigo;
+        this.nombre = nombre;
+        this.categoria = categoria;
+        this.precio = precio;
+        this.cantidad = cantidad;
+        this.fechaVencimiento = fechaVencimiento;
+    }
+
+    public Producto(String codigo, String nombre, String categoria,
+                    BigDecimal precio, int cantidad, LocalDate fechaVencimiento) {
+        this(0, codigo, nombre, categoria, precio, cantidad, fechaVencimiento);
+    }
+
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
+
+    public String getCodigo() { return codigo; }
+    public void setCodigo(String codigo) { this.codigo = codigo; }
+
+    public String getNombre() { return nombre; }
+    public void setNombre(String nombre) { this.nombre = nombre; }
+
+    public String getCategoria() { return categoria; }
+    public void setCategoria(String categoria) { this.categoria = categoria; }
+
+    public BigDecimal getPrecio() { return precio; }
+    public void setPrecio(BigDecimal precio) { this.precio = precio; }
+
+    public int getCantidad() { return cantidad; }
+    public void setCantidad(int cantidad) { this.cantidad = cantidad; }
+
+    public LocalDate getFechaVencimiento() { return fechaVencimiento; }
+    public void setFechaVencimiento(LocalDate fechaVencimiento) {
+        this.fechaVencimiento = fechaVencimiento;
+    }
+
+    @Override
+    public String toString() {
+        return codigo + " - " + nombre + " - Cantidad: " + cantidad;
+    }
+}
+package com.pharmasoft.vista;
+
+import com.pharmasoft.dao.ProductoDAO;
+import com.pharmasoft.modelo.Producto;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
+
+public class PharmasoftApp extends JFrame {
+
+    private final ProductoDAO productoDAO = new ProductoDAO();
+
+    private final JTextField txtId = new JTextField();
+    private final JTextField txtCodigo = new JTextField();
+    private final JTextField txtNombre = new JTextField();
+    private final JTextField txtCategoria = new JTextField();
+    private final JTextField txtPrecio = new JTextField();
+    private final JTextField txtCantidad = new JTextField();
+    private final JTextField txtFechaVencimiento = new JTextField();
+
+    private final DefaultTableModel modeloTabla = new DefaultTableModel(
+            new Object[]{"ID", "Código", "Nombre", "Categoría", "Precio", "Cantidad", "Vencimiento"}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+
+    private final JTable tabla = new JTable(modeloTabla);
+
+    public PharmasoftApp() {
+        setTitle("PharmaSoft - Gestión de productos");
+        setSize(1000, 620);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        construirInterfaz();
+        cargarProductos();
+    }
+
+    private void construirInterfaz() {
+        JPanel formulario = new JPanel(new GridLayout(4, 4, 8, 8));
+        formulario.setBorder(BorderFactory.createTitledBorder("Datos del producto"));
+
+        txtId.setEditable(false);
+
+        formulario.add(new JLabel("ID"));
+        formulario.add(txtId);
+        formulario.add(new JLabel("Código"));
+        formulario.add(txtCodigo);
+
+        formulario.add(new JLabel("Nombre"));
+        formulario.add(txtNombre);
+        formulario.add(new JLabel("Categoría"));
+        formulario.add(txtCategoria);
+
+        formulario.add(new JLabel("Precio"));
+        formulario.add(txtPrecio);
+        formulario.add(new JLabel("Cantidad"));
+        formulario.add(txtCantidad);
+
+        formulario.add(new JLabel("Vencimiento (AAAA-MM-DD)"));
+        formulario.add(txtFechaVencimiento);
+        formulario.add(new JLabel(""));
+        formulario.add(new JLabel(""));
+
+        JPanel botones = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 8));
+
+        JButton btnRegistrar = new JButton("Registrar");
+        JButton btnActualizar = new JButton("Actualizar");
+        JButton btnEliminar = new JButton("Eliminar");
+        JButton btnBuscar = new JButton("Buscar");
+        JButton btnLimpiar = new JButton("Limpiar");
+
+        btnRegistrar.addActionListener(e -> registrarProducto());
+        btnActualizar.addActionListener(e -> actualizarProducto());
+        btnEliminar.addActionListener(e -> eliminarProducto());
+        btnBuscar.addActionListener(e -> buscarProducto());
+        btnLimpiar.addActionListener(e -> limpiarFormulario());
+
+        botones.add(btnRegistrar);
+        botones.add(btnActualizar);
+        botones.add(btnEliminar);
+        botones.add(btnBuscar);
+        botones.add(btnLimpiar);
+
+        tabla.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        tabla.getSelectionModel().addListSelectionListener(e -> cargarSeleccion());
+
+        JScrollPane scroll = new JScrollPane(tabla);
+        scroll.setBorder(BorderFactory.createTitledBorder("Inventario"));
+
+        JPanel principal = new JPanel(new BorderLayout(10, 10));
+        principal.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        principal.add(formulario, BorderLayout.NORTH);
+        principal.add(scroll, BorderLayout.CENTER);
+        principal.add(botones, BorderLayout.SOUTH);
+
+        setContentPane(principal);
+    }
+
+    private Producto leerFormulario() {
+        String codigo = txtCodigo.getText().trim();
+        String nombre = txtNombre.getText().trim();
+        String categoria = txtCategoria.getText().trim();
+
+        if (codigo.isEmpty() || nombre.isEmpty() || categoria.isEmpty()) {
+            throw new IllegalArgumentException("Código, nombre y categoría son obligatorios.");
+        }
+
+        BigDecimal precio = new BigDecimal(txtPrecio.getText().trim());
+        int cantidad = Integer.parseInt(txtCantidad.getText().trim());
+
+        if (precio.compareTo(BigDecimal.ZERO) < 0 || cantidad < 0) {
+            throw new IllegalArgumentException("Precio y cantidad no pueden ser negativos.");
+        }
+
+        LocalDate fecha = null;
+        String textoFecha = txtFechaVencimiento.getText().trim();
+        if (!textoFecha.isEmpty()) {
+            fecha = LocalDate.parse(textoFecha);
+        }
+
+        int id = txtId.getText().trim().isEmpty() ? 0 : Integer.parseInt(txtId.getText().trim());
+
+        return new Producto(id, codigo, nombre, categoria, precio, cantidad, fecha);
+    }
+
+    private void registrarProducto() {
+        try {
+            Producto producto = leerFormulario();
+            productoDAO.insertar(producto);
+            mostrarMensaje("Producto registrado correctamente.");
+            limpiarFormulario();
+            cargarProductos();
+        } catch (NumberFormatException ex) {
+            mostrarError("Precio, cantidad o ID no tienen un formato válido.");
+        } catch (DateTimeParseException ex) {
+            mostrarError("La fecha debe tener el formato AAAA-MM-DD.");
+        } catch (IllegalArgumentException ex) {
+            mostrarError(ex.getMessage());
+        } catch (Exception ex) {
+            mostrarError("No se pudo registrar el producto: " + ex.getMessage());
+        }
+    }
+
+    private void actualizarProducto() {
+        try {
+            if (txtId.getText().trim().isEmpty()) {
+                mostrarError("Selecciona un producto de la tabla para actualizarlo.");
+                return;
+            }
+
+            Producto producto = leerFormulario();
+            productoDAO.actualizar(producto);
+            mostrarMensaje("Producto actualizado correctamente.");
+            limpiarFormulario();
+            cargarProductos();
+        } catch (NumberFormatException ex) {
+            mostrarError("Precio, cantidad o ID no tienen un formato válido.");
+        } catch (DateTimeParseException ex) {
+            mostrarError("La fecha debe tener el formato AAAA-MM-DD.");
+        } catch (IllegalArgumentException ex) {
+            mostrarError(ex.getMessage());
+        } catch (Exception ex) {
+            mostrarError("No se pudo actualizar el producto: " + ex.getMessage());
+        }
+    }
+
+    private void eliminarProducto() {
+        try {
+            if (txtId.getText().trim().isEmpty()) {
+                mostrarError("Selecciona un producto de la tabla para eliminarlo.");
+                return;
+            }
+
+            int respuesta = JOptionPane.showConfirmDialog(
+                    this,
+                    "¿Deseas eliminar el producto seleccionado?",
+                    "Confirmar eliminación",
+                    JOptionPane.YES_NO_OPTION
+            );
+
+            if (respuesta == JOptionPane.YES_OPTION) {
+                int id = Integer.parseInt(txtId.getText().trim());
+                productoDAO.eliminar(id);
+                mostrarMensaje("Producto eliminado correctamente.");
+                limpiarFormulario();
+                cargarProductos();
+            }
+        } catch (Exception ex) {
+            mostrarError("No se pudo eliminar el producto: " + ex.getMessage());
+        }
+    }
+
+    private void buscarProducto() {
+        String codigo = JOptionPane.showInputDialog(this, "Ingresa el código del producto:");
+
+        if (codigo == null || codigo.trim().isEmpty()) {
+            return;
+        }
+
+        try {
+            Producto producto = productoDAO.buscarPorCodigo(codigo.trim());
+
+            if (producto == null) {
+                mostrarMensaje("No se encontró un producto con ese código.");
+                return;
+            }
+
+            mostrarProductoEnFormulario(producto);
+        } catch (Exception ex) {
+            mostrarError("No se pudo realizar la búsqueda: " + ex.getMessage());
+        }
+    }
+
+    private void cargarProductos() {
+        modeloTabla.setRowCount(0);
+
+        try {
+            for (Producto producto : productoDAO.consultarTodos()) {
+                modeloTabla.addRow(new Object[]{
+                        producto.getId(),
+                        producto.getCodigo(),
+                        producto.getNombre(),
+                        producto.getCategoria(),
+                        producto.getPrecio(),
+                        producto.getCantidad(),
+                        producto.getFechaVencimiento()
+                });
+            }
+        } catch (Exception ex) {
+            mostrarError("No se pudieron cargar los productos. Verifica la conexión con MySQL.");
+        }
+    }
+
+    private void cargarSeleccion() {
+        int fila = tabla.getSelectedRow();
+
+        if (fila >= 0) {
+            txtId.setText(String.valueOf(modeloTabla.getValueAt(fila, 0)));
+            txtCodigo.setText(String.valueOf(modeloTabla.getValueAt(fila, 1)));
+            txtNombre.setText(String.valueOf(modeloTabla.getValueAt(fila, 2)));
+            txtCategoria.setText(String.valueOf(modeloTabla.getValueAt(fila, 3)));
+            txtPrecio.setText(String.valueOf(modeloTabla.getValueAt(fila, 4)));
+            txtCantidad.setText(String.valueOf(modeloTabla.getValueAt(fila, 5)));
+
+            Object fecha = modeloTabla.getValueAt(fila, 6);
+            txtFechaVencimiento.setText(fecha == null ? "" : fecha.toString());
+        }
+    }
+
+    private void mostrarProductoEnFormulario(Producto producto) {
+        txtId.setText(String.valueOf(producto.getId()));
+        txtCodigo.setText(producto.getCodigo());
+        txtNombre.setText(producto.getNombre());
+        txtCategoria.setText(producto.getCategoria());
+        txtPrecio.setText(producto.getPrecio().toString());
+        txtCantidad.setText(String.valueOf(producto.getCantidad()));
+        txtFechaVencimiento.setText(
+                producto.getFechaVencimiento() == null ? "" : producto.getFechaVencimiento().toString()
+        );
+    }
+
+    private void limpiarFormulario() {
+        txtId.setText("");
+        txtCodigo.setText("");
+        txtNombre.setText("");
+        txtCategoria.setText("");
+        txtPrecio.setText("");
+        txtCantidad.setText("");
+        txtFechaVencimiento.setText("");
+        tabla.clearSelection();
+    }
+
+    private void mostrarMensaje(String mensaje) {
+        JOptionPane.showMessageDialog(this, mensaje, "PharmaSoft", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void mostrarError(String mensaje) {
+        JOptionPane.showMessageDialog(this, mensaje, "PharmaSoft", JOptionPane.ERROR_MESSAGE);
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new PharmasoftApp().setVisible(true));
+    }
+}
+REPOSITORIO GITHUB - PHARMASOFT
+
+Evidencia: GA7-220501096-AA2-EV01
+
+El proyecto debe ser publicado en GitHub y en este archivo se debe pegar el enlace final del repositorio.
+
+Enlace:
+https://github.com/PEGAR-AQUI-EL-USUARIO/pharmasoft
+
+Nota: reemplazar esta dirección por el enlace real después de crear el repositorio en GitHub.
+
+EVIDENCIA GA7-220501096-AA2-EV01
+
+Contenido:
+- Proyecto Java Maven.
+- Módulo CRUD de productos.
+- Conexión JDBC con MySQL.
+- Script de creación de base de datos.
+- README con instrucciones.
+- Archivo de versionamiento.
+- Archivo para colocar el enlace del repositorio.
+
+ANTES DE ENTREGAR:
+1. Instalar Java 17, Maven y MySQL.
+2. Ejecutar database/pharmasoft.sql.
+3. Revisar usuario y contraseña de MySQL en ConexionBD.java.
+4. Probar registrar, consultar, actualizar y eliminar.
+5. Crear el repositorio de GitHub y subir el proyecto.
+6. Pegar el enlace real en enlace_repositorio.txt.
+7. Comprimir la carpeta con el nombre:
+   EIDERANDRESMENDOZAPEREZ_AA2_EV01.zip
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.pharmasoft</groupId>
+    <artifactId>pharmasoft</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>9.4.0</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <mainClass>com.pharmasoft.vista.PharmasoftApp</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+# PharmaSoft - GA7-220501096-AA2-EV01
+
+Módulo de gestión de productos para el sistema de inventario de una droguería.
+
+## Funcionalidades
+
+- Registrar productos.
+- Consultar todos los productos.
+- Buscar un producto por código.
+- Actualizar productos.
+- Eliminar productos.
+- Conexión a MySQL mediante JDBC.
+
+## Tecnologías
+
+- Java 17
+- Maven
+- MySQL
+- JDBC
+- Swing
+
+## Requisitos
+
+1. JDK 17 o superior.
+2. Maven.
+3. MySQL Server.
+4. Un IDE como IntelliJ IDEA, Eclipse o NetBeans.
+
+## Configuración de la base de datos
+
+1. Iniciar MySQL.
+2. Ejecutar el archivo `database/pharmasoft.sql`.
+3. Por defecto, la aplicación usa:
+   - Servidor: localhost
+   - Puerto: 3306
+   - Base de datos: pharmasoft
+   - Usuario: root
+   - Contraseña: root
+
+Si tu instalación de MySQL utiliza otra contraseña, edita `src/main/java/com/pharmasoft/conexion/ConexionBD.java`.
+
+## Ejecutar
+
+Desde la carpeta del proyecto:
+
+```bash
+mvn clean compile
+mvn exec:java
+```
+
+También puedes abrir el proyecto desde un IDE y ejecutar `PharmasoftApp`.
+
+## Nota
+
+Este proyecto corresponde al módulo CRUD de productos de PharmaSoft y sirve como base para continuar con módulos de proveedores, entradas, salidas, usuarios y reportes.
+
+VERSIONAMIENTO DEL PROYECTO
+
+El proyecto está preparado para trabajar con Git.
+
+Comandos recomendados:
+
+git init
+git add .
+git commit -m "Primera version PharmaSoft GA7-AA2-EV01"
+git branch -M main
+git remote add origin URL_DEL_REPOSITORIO
+git push -u origin main
+
+Después de crear el repositorio en GitHub, actualizar enlace_repositorio.txt con la URL real.
+
+target/
+.idea/
+.vscode/
+*.class
+*.log
+.DS_Store
+Thumbs.db
